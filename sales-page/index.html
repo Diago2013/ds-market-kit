@@ -1,9 +1,23 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+<!--
+  ╔═══════════════════════════════════════════════════════╗
+  ║  🔗 发布前唯一需要改的地方：                             ║
+  ║  把下面的 GUMROAD_URL 换成你的 Gumroad 产品链接即可    ║
+  ║  基础版替换基础版，专业版替换专业版                      ║
+  ╚═══════════════════════════════════════════════════════╝
+-->
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DS Market Kit — 数字产品商店启动套件 | 3 天上线你的付费网站</title>
+<script>
+// ====== 👇 这里替换成你的 Gumroad 产品链接 ======
+const BUY_URL_BASIC  = 'https://gum.co/ds-market-kit-basic';   // 基础版 ¥129
+const BUY_URL_PRO    = 'https://gum.co/ds-market-kit-pro';     // 专业版 ¥249
+// ====== 👆 ======
+function buy(link) { window.open(link, '_blank'); }
+</script>
 <meta name="description" content="Next.js 全栈电商模板。内置用户系统、Stripe/支付宝/微信支付、订单管理、后台统计。克隆→改配置→部署，三天上线你自己的数字产品商店。">
 <meta property="og:title" content="DS Market Kit — 数字产品商店启动套件">
 <meta property="og:description" content="Next.js 全栈电商模板。内置用户系统、Stripe/支付宝/微信支付。三天上线。">
@@ -156,7 +170,7 @@ footer{text-align:center;padding:40px 0;opacity:.5;font-size:.9rem}
 <li>5 份中文文档</li>
 <li>30 天邮件支持</li>
 </ul>
-<div style="margin-top:20px"><a href="#buy" class="btn btn-ghost" style="width:100%;text-align:center">购买基础版</a></div>
+<div style="margin-top:20px"><a href="#" onclick="buy(BUY_URL_BASIC);return false" class="btn btn-ghost" style="width:100%;text-align:center">购买基础版</a></div>
 </div>
 
 <div class="card card-popular">
@@ -170,7 +184,7 @@ footer{text-align:center;padding:40px 0;opacity:.5;font-size:.9rem}
 <li>优先技术支持</li>
 <li>品牌定制咨询</li>
 </ul>
-<div style="margin-top:20px"><a href="#buy" class="btn btn-primary" style="width:100%;text-align:center">购买专业版</a></div>
+<div style="margin-top:20px"><a href="#" onclick="buy(BUY_URL_PRO);return false" class="btn btn-primary" style="width:100%;text-align:center">购买专业版</a></div>
 </div>
 </div>
 
@@ -239,7 +253,7 @@ footer{text-align:center;padding:40px 0;opacity:.5;font-size:.9rem}
 ¥129 一次性投入，换来一套完整的数字产品变现引擎。<br>
 比别人外包开发省 ¥10,000+，比别人自己搭建省 200+ 小时。
 </p>
-<a href="https://gum.co/ds-market-kit" class="btn btn-primary" style="font-size:1.15rem;padding:18px 48px">立即购买 ¥129</a>
+<a href="#" onclick="buy(BUY_URL_PRO);return false" class="btn btn-primary" style="font-size:1.15rem;padding:18px 48px">立即购买 ¥129</a>
 <p style="margin-top:16px;font-size:.85rem;opacity:.5">购买后在 Gumroad 即时下载。包含全部源码 + 5 份文档。</p>
 </div>
 </section>
