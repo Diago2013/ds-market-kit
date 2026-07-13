@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("USER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+  analytics AnalyticsEvent[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String
+  price       Int      // Stored in cents
+  currency    String   @default("cny")
+  imageUrl    String?
+  category    String   @default("general")
+  featured    Boolean  @default(false)
+  published   Boolean  @default(false)
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders      Order[]
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  orderNumber   String   @unique
+  userId        String
+  productId     String
+  amount        Int      // Total in cents
+  currency      String   @default("cny")
+  status        String   @default("PENDING") // PENDING, PAID, PROCESSING, COMPLETED, CANCELLED, REFUNDED
+  paymentMethod String?
+  paymentId     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  event     String   // page_view, purchase, signup, etc.
+  path      String?
+  referrer  String?
+  metadata  String?  // JSON string
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([event])
+  @@index([createdAt])
+  @@index([path])
+}

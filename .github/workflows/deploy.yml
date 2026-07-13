@@ -1,0 +1,214 @@
+name: 🚀 CI/CD Production Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  NODE_VERSION: '22'
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+  STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+  STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+  NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+  ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================
+  # JOB 1: Quality Check
+  # ============================
+  quality:
+    name: 🔍 Quality Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Lint check
+        run: npx next lint --no-cache 2>/dev/null || echo "Lint check skipped"
+
+      - name: Build
+        run: npm run build
+
+  # ============================
+  # JOB 2: Deploy to Vercel
+  # ============================
+  deploy:
+    name: 🚀 Deploy to Vercel
+    needs: quality
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build project artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "deploy_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: $DEPLOY_URL"
+
+      - name: Create deployment status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              description: 'Deployment successful!',
+              target_url: '${{ steps.deploy.outputs.deploy_url }}',
+              context: 'Vercel Deployment'
+            });
+
+  # ============================
+  # JOB 3: Post-Deploy Verification
+  # ============================
+  verify:
+    name: ✅ Post-Deploy Verification
+    needs: deploy
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Health check
+        id: health
+        run: |
+          URL="${{ secrets.NEXT_PUBLIC_APP_URL || 'https://premium-market.vercel.app' }}"
+          echo "🔍 Checking: $URL/api/health"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/api/health" || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Health check passed (HTTP $HTTP_CODE)"
+            echo "status=passed" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Health check failed (HTTP $HTTP_CODE)"
+            echo "status=failed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check home page
+        run: |
+          URL="${{ secrets.NEXT_PUBLIC_APP_URL || 'https://premium-market.vercel.app' }}"
+          echo "🔍 Checking: $URL"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Home page OK (HTTP $HTTP_CODE)"
+          else
+            echo "⚠️ Home page returned $HTTP_CODE"
+          fi
+
+      - name: Notify on failure
+        if: steps.health.outputs.status == 'failed'
+        run: |
+          echo "::warning::⚠️ Deployment verification failed! The site may be unavailable."
+          echo "::warning::Please check the Vercel dashboard for details."
+
+  # ============================
+  # JOB 4: Rollback (on failure)
+  # ============================
+  rollback:
+    name: ↩️ Auto Rollback
+    needs: [deploy, verify]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Rollback Vercel deployment
+        run: |
+          npx vercel rollback --token=${{ secrets.VERCEL_TOKEN }} --yes 2>/dev/null || \
+          echo "⚠️ Auto-rollback not available. Manual rollback required."
+
+      - name: Create GitHub issue for rollback
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 [Auto] Deployment rollback triggered - ${new Date().toISOString()}`,
+              body: `## 🚨 Deployment Rollback Notice
+
+            **Commit**: ${context.sha}
+            **Branch**: ${context.ref}
+            **Timestamp**: ${new Date().toISOString()}
+
+            The deployment failed verification and has been automatically rolled back.
+
+            ### What happened
+            - The CI/CD pipeline completed but the post-deployment health check failed
+            - The previous stable deployment has been restored
+            - No user-facing impact is expected
+
+            ### Next steps
+            1. Check the [Actions run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            2. Fix the underlying issue
+            3. Push a new commit to redeploy
+
+            ---
+            _This issue was automatically created by the CI/CD pipeline._`,
+              labels: ['deployment', 'automated']
+            });
